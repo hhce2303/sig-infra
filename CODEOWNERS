@@ -1,0 +1,6 @@
+# Dueño del borde y aprobador de cambios de ruta: Héctor Cruz (decisión 2026-10-09).
+# Cada backend es dueño de su vhost; el dueño del borde revisa seguridad, TLS y puertos.
+# Sustituir el correo por el usuario de GitHub (@usuario) cuando el repo se publique.
+*                                  hector.cruz@sig.systems
+/edge/nginx/conf.d/api.sig.systems.conf    hector.cruz@sig.systems
+/edge/nginx/conf.d/desk.sig.systems.conf   hector.cruz@sig.systems

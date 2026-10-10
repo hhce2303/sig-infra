@@ -1,0 +1,39 @@
+# Borde compartido de SIG: un único nginx delante de SLC-SIG_platform y SIG-Desk (Kong).
+# Contrato completo: ../README.md. Corte desde SLC: ../docs/runbook.md.
+name: sig-edge
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sig-edge-nginx
+    ports:
+      - "${NGINX_PORT:-8091}:80"
+    volumes:
+      # Directorio completo (no archivos sueltos): así `nginx -s reload` ve los
+      # cambios aunque un `git pull` reemplace los archivos.
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./certs:/etc/nginx/certs:ro
+      # Media de SLC (planos indoor), solo lectura. Volumen externo de SLC-SIG_platform.
+      - slc_media:/app/media:ro
+    networks:
+      - sig-edge
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+networks:
+  # Creada por `make network` (idempotente). Compartida con los backends.
+  sig-edge:
+    external: true
+    name: sig-edge
+
+volumes:
+  slc_media:
+    external: true
+    # Nombre real del volumen: `docker volume ls | grep media_data` en el servidor.
+    name: ${SLC_MEDIA_VOLUME:?define SLC_MEDIA_VOLUME en edge/.env (ver .env.example)}

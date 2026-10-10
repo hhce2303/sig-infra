@@ -1,0 +1,17 @@
+name: Validate edge
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+jobs:
+  nginx-t:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: nginx -t
+        run: ./scripts/check.sh
+      - name: compose config
+        run: |
+          cp edge/.env.example edge/.env
+          docker compose -f edge/compose.yaml config -q
