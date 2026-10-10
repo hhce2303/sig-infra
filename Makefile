@@ -11,5 +11,5 @@ check: ## nginx -t con la config completa
 	./scripts/check.sh
 smoke: ## Smoke test por host
 	./scripts/smoke.sh
-bundle: ## Genera dist/sig-infra-<version>.tar para llevar al servidor
+bundle: ## dist/sig-infra-<version>.tar con TODOS los compose (borde + SLC + SIG-Desk)
 	./scripts/bundle.sh
