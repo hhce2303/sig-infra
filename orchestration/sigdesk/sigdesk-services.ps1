@@ -103,7 +103,9 @@ function Test-EnvFile($s, [ref]$problems) {
     if (-not $e.Contains($k) -or [string]::IsNullOrWhiteSpace($e[$k])) { $problems.Value += "$($s.Key).env: falta $k"; continue }
     if ($e[$k] -match 'CAMBIAR|CHANGE_?ME|dev-only') { $problems.Value += "$($s.Key).env: $k sigue con el valor de ejemplo" }
   }
-  if ($e.Contains('JWT_SECRET') -and $e['JWT_SECRET'].Length -lt 32) { $problems.Value += "$($s.Key).env: JWT_SECRET < 32 caracteres" }
+  foreach ($k in 'JWT_SECRET','TICKETS_INTERNAL_SECRET') {
+    if ($e.Contains($k) -and $e[$k].Length -lt 32) { $problems.Value += "$($s.Key).env: $k < 32 caracteres (el servicio no arranca)" }
+  }
   foreach ($k in $e.Keys) { if ($e[$k] -match '["\r\n]') { $problems.Value += "$($s.Key).env: $k contiene comillas o saltos de línea (no soportado)" } }
   foreach ($k in 'PORT','LISTEN_HOST') { if ($e.Contains($k)) { $problems.Value += "$($s.Key).env: no definas $k (lo fija este script: $BindHost`:$($s.Port))" } }
   return $e
