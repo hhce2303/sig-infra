@@ -1,4 +1,4 @@
-.PHONY: network up down reload check smoke
+.PHONY: network up down reload check smoke bundle
 network: ## Crea la red compartida sig-edge (idempotente)
 	@docker network inspect sig-edge >/dev/null 2>&1 || docker network create sig-edge
 up: network ## Levanta el borde
@@ -11,3 +11,5 @@ check: ## nginx -t con la config completa
 	./scripts/check.sh
 smoke: ## Smoke test por host
 	./scripts/smoke.sh
+bundle: ## Genera dist/sig-infra-<version>.tar para llevar al servidor
+	./scripts/bundle.sh

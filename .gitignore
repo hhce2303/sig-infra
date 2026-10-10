@@ -1,3 +1,4 @@
 .env
 edge/certs/*
 !edge/certs/.gitkeep
+dist/

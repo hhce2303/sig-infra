@@ -40,6 +40,9 @@ make up        # crea la red y levanta el borde
 make check     # nginx -t con la config completa
 make reload    # tras cambiar un vhost
 make smoke     # prueba por host
+make bundle    # dist/sig-infra-<version>.tar para copiar al servidor (sin clonar el repo)
 ```
+
+En el servidor: `tar xf sig-infra-<version>.tar && cd sig-infra-<version> && cp edge/.env.example edge/.env && make up`. Los certificados (`edge/certs/`) y `edge/.env` no viajan en el .tar; se colocan a mano.
 
 Corte desde el nginx de SLC y rollback: `docs/runbook.md`. Decisión de diseño: `docs/adr/0001-repo-de-infraestructura-y-borde-en-capas.md`.
