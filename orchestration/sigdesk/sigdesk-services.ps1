@@ -94,7 +94,10 @@ function Read-EnvFile($path) {
 }
 function Test-EnvFile($s, [ref]$problems) {
   $p = EnvPath $s
-  if (-not (Test-Path -LiteralPath $p)) { $problems.Value += "falta $p (copia env\$($s.Key).env.example)"; return $null }
+  # config\ solo la leen SYSTEM y Administradores (tras 'install'): sin admin no se puede validar.
+  try { $exists = Test-Path -LiteralPath $p -ErrorAction Stop }
+  catch [UnauthorizedAccessException] { Say "  $($s.Key).env: sin permiso de lectura (corre como Administrador para validarlo)"; return $null }
+  if (-not $exists) { $problems.Value += "falta $p (copia env\$($s.Key).env.example)"; return $null }
   $e = Read-EnvFile $p
   $required = @('DATABASE_URL')
   if ($s.Key -ne 'workflow') { $required += 'JWT_SECRET' }
@@ -114,9 +117,15 @@ function Test-EnvFile($s, [ref]$problems) {
 function Test-PortFree($s) {
   $c = Get-NetTCPConnection -State Listen -LocalPort $s.Port -ErrorAction SilentlyContinue
   if (-not $c) { return $true }
-  # Si es nuestro propio servicio ya corriendo, no es conflicto.
+  # Si es nuestro propio servicio ya corriendo, no es conflicto. El PID del servicio es nssm.exe;
+  # quien escucha es su proceso hijo (el .exe de Go), así que se compara también el padre.
   $svc = Get-OwnedService (SvcName $s)
-  if ($svc -and $svc.ProcessId -and ($c.OwningProcess -contains $svc.ProcessId)) { return $true }
+  if (-not ($svc -and $svc.ProcessId)) { return $false }
+  foreach ($procId in @($c.OwningProcess | Select-Object -Unique)) {
+    if ($procId -eq $svc.ProcessId) { return $true }
+    $p = Get-CimInstance Win32_Process -Filter "ProcessId=$procId" -ErrorAction SilentlyContinue
+    if ($p -and $p.ParentProcessId -eq $svc.ProcessId) { return $true }
+  }
   return $false
 }
 
