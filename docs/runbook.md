@@ -29,3 +29,23 @@ Tiempo esperado: menos de un minuto; el nginx de SLC no se borra hasta cerrar la
 - Cambiar un vhost: PR → `make check` en CI → merge → en el servidor `git pull && make reload`.
 - Si `nginx -t` falla en `make reload`, nginx sigue con la config anterior (no hay corte).
 - Certificados manuales: reemplazar archivos en `edge/certs/` y `make reload`.
+
+## Fase 3 — 8091 pasa a HTTPS (+ nexus.sig.systems)
+
+Cambio con impacto: todo cliente que use `http://…:8091` recibe un 308 a `https://`. Los navegadores lo
+siguen solos; los clientes de API que no siguen redirecciones deben cambiar su URL. Los que entran **por IP**
+(`https://192.168.1.69:8091`) verán un aviso de certificado (el wildcard solo cubre `*.sig.systems`).
+
+Previo:
+1. Certificado en `edge/certs/sig_systems_cert.pem` (cert + intermedios) y `edge/certs/sig_systems_key.pem`.
+   Verificar: `openssl x509 -in edge/certs/sig_systems_cert.pem -noout -subject -enddate` y que cert y clave coincidan.
+2. `make check` en verde.
+
+Corte (ventana corta, solo afecta a `sig-edge-nginx`):
+1. `cd edge && docker compose up -d` (recrea el contenedor con el puerto 8091→443 y el mount de `sites/`).
+2. `make smoke` (ya en HTTPS; verifica el certificado real).
+
+Después, en SLC (su propio PR y ventana): `TRUST_PROXY_HEADERS=true` y añadir los orígenes `https://…:8091`
+a `CSRF_TRUSTED_ORIGINS`, para que Django reconozca las peticiones como HTTPS.
+
+Rollback: `git checkout <commit anterior> -- edge scripts && cd edge && docker compose up -d` (vuelve a HTTP en el 8091).
