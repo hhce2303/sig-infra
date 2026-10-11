@@ -2,7 +2,7 @@
 
 Infraestructura compartida de SIG. Primer módulo: **`edge/`**, el nginx que es la única puerta pública de SLC-SIG_platform y de SIG-Desk (Kong). Pensado para crecer (otros servicios compartidos y, más adelante, orquestación; ver `orchestration/`).
 
-Estado: **Fase 2** — repo creado, **sin corte de tráfico** (el nginx de SLC sigue siendo el que atiende producción). Contexto y plan: `SIG-SLC/reports/Extraer nginx a servicios compartidos.md`.
+Estado: **Fase 2 — corte hecho el 2026-10-10 en este host** (`sig-edge-nginx` atiende el 8091; el nginx de SLC quedó parado, no borrado, como rollback). Falta: validar SIG-Desk de punta a punta y TLS (Fase 3). Contexto y plan: `SIG-SLC/reports/Extraer nginx a servicios compartidos.md`.
 
 ## Contrato del borde
 

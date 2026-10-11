@@ -1,6 +1,6 @@
 # Runbook del borde
 
-## Requisitos previos al corte (aún NO aplicados)
+## Requisitos previos al corte (aplicados el 2026-10-10)
 
 1. **SLC web en `sig-edge` con alias `slc-web`.** En SLC-SIG_platform, el servicio `web` debe unirse a la red externa `sig-edge` con `aliases: [slc-web]` (overlay propio, p. ej. `docker-compose.edge.yml`). Sin esto el borde responde 502 en `api.`.
 2. **Volumen de media.** Confirmar el nombre real (`docker volume ls | grep media_data`) y ponerlo en `edge/.env` (`SLC_MEDIA_VOLUME`).
