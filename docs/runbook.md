@@ -37,8 +37,8 @@ siguen solos; los clientes de API que no siguen redirecciones deben cambiar su U
 (`https://192.168.1.69:8091`) verán un aviso de certificado (el wildcard solo cubre `*.sig.systems`).
 
 Previo:
-1. Certificado en `edge/certs/sig.systems.crt` (cert + intermedios) y `edge/certs/sig.systems.key`.
-   Verificar: `openssl x509 -in edge/certs/sig.systems.crt -noout -subject -enddate` y que cert y clave coincidan.
+1. Certificado en `edge/certs/sig_systems_cert.pem` (cert + intermedios) y `edge/certs/sig_systems_key.pem`.
+   Verificar: `openssl x509 -in edge/certs/sig_systems_cert.pem -noout -subject -enddate` y que cert y clave coincidan.
 2. `make check` en verde.
 
 Corte (ventana corta, solo afecta a `sig-edge-nginx`):

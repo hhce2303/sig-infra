@@ -20,7 +20,7 @@ cliente ──► sig-edge-nginx ──┬─ api.sig.systems (y cualquier otro 
 | Upstreams | Resueltos por petición (`resolver 127.0.0.11` + variable): el borde arranca aunque un backend esté caído; 502 solo en ese host |
 | Vhosts | Un archivo por consumidor en `edge/nginx/conf.d/` |
 | Media de SLC | Volumen externo de SLC montado solo lectura en `/app/media` (`SLC_MEDIA_VOLUME`) |
-| TLS | **Solo HTTPS en el 8091** (Fase 3). Wildcard `*.sig.systems` manual: `edge/certs/sig.systems.crt` (fullchain) y `sig.systems.key`, fuera de git. HTTP plano al 8091 → 308 a https |
+| TLS | **Solo HTTPS en el 8091** (Fase 3). Wildcard `*.sig.systems` manual: `edge/certs/sig_systems_cert.pem` (fullchain) y `sig_systems_key.pem`, fuera de git. HTTP plano al 8091 → 308 a https |
 | Reload | `make reload` (`nginx -t` + `nginx -s reload`). Los mounts son de directorio, por eso el reload ve los cambios tras un `git pull` |
 | Dueño del borde y aprobador de rutas | Héctor Cruz (`CODEOWNERS`) |
 
