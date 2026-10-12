@@ -29,3 +29,42 @@ Tiempo esperado: menos de un minuto; el nginx de SLC no se borra hasta cerrar la
 - Cambiar un vhost: PR → `make check` en CI → merge → en el servidor `git pull && make reload`.
 - Si `nginx -t` falla en `make reload`, nginx sigue con la config anterior (no hay corte).
 - Certificados manuales: reemplazar archivos en `edge/certs/` y `make reload`.
+
+## Fase 3 — 8091 pasa a HTTPS (+ nexus.sig.systems)
+
+Cambio con impacto: todo cliente que use `http://…:8091` recibe un 308 a `https://`. Los navegadores lo
+siguen solos; los clientes de API que no siguen redirecciones deben cambiar su URL. Los que entran **por IP**
+(`https://192.168.1.69:8091`) verán un aviso de certificado (el wildcard solo cubre `*.sig.systems`).
+
+Previo:
+1. Certificado en `edge/certs/sig_systems_cert.pem` (cert + intermedios) y `edge/certs/sig_systems_key.pem`.
+   Verificar: `openssl x509 -in edge/certs/sig_systems_cert.pem -noout -subject -enddate` y que cert y clave coincidan.
+2. `make check` en verde.
+
+Corte (ventana corta, solo afecta a `sig-edge-nginx`):
+1. `cd edge && docker compose up -d` (recrea el contenedor con el puerto 8091→443 y el mount de `sites/`).
+2. `make smoke` (ya en HTTPS; verifica el certificado real).
+
+Después, en SLC (su propio PR y ventana): `TRUST_PROXY_HEADERS=true` y añadir los orígenes `https://…:8091`
+a `CSRF_TRUSTED_ORIGINS`, para que Django reconozca las peticiones como HTTPS.
+
+Rollback: `git checkout <commit anterior> -- edge scripts && cd edge && docker compose up -d` (vuelve a HTTP en el 8091).
+
+## SIGNexus (frontend en nexus.sig.systems)
+
+Estático servido por el borde desde `edge/sites/nexus/` (fuera de git). Las URLs de backend se
+fijan al compilar (Vite):
+
+```bash
+# compilar sin Node en el host (repo SIGSystems/SIGNexus clonado en ../SIGNexus)
+docker run --rm -v "$PWD/../SIGNexus:/src:ro" -v "C:/SIG/SIGNexus/staging:/out" \
+  -e VITE_API_URL=https://nexus.sig.systems:8091/desk-api \
+  -e VITE_SIGTOOLS_API_URL=https://api.sig.systems:8091 \
+  node:24-alpine sh -c 'cp -r /src/FRONTEND /b && cd /b && npm ci && npm run build && cp -r dist/. /out/'
+scripts/deploy-nexus.sh C:/SIG/SIGNexus/staging     # publica (sin recargar nginx)
+scripts/deploy-nexus.sh --rollback                  # vuelve al build anterior
+```
+
+`nexus.sig.systems/desk-api/*` → Kong (mismo origen). El login va a `https://api.sig.systems:8091`
+(otro origen, mismo sitio): `https://nexus.sig.systems:8091` debe estar en `CORS_ALLOWED_ORIGINS` y
+`CSRF_TRUSTED_ORIGINS` de SLC. Sin build publicado, copiar `edge/sites/_placeholder/` a `edge/sites/nexus/`.

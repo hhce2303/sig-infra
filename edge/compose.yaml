@@ -7,7 +7,9 @@ services:
     image: nginx:1.27-alpine
     container_name: sig-edge-nginx
     ports:
-      - "${NGINX_PORT:-8091}:80"
+      # Solo HTTPS (Fase 3): el 8091 público llega al 443 del contenedor. HTTP plano
+      # a este puerto se redirige a https (snippets/tls.conf, error_page 497).
+      - "${NGINX_PORT:-8091}:443"
     volumes:
       # Directorio completo (no archivos sueltos): así `nginx -s reload` ve los
       # cambios aunque un `git pull` reemplace los archivos.
@@ -15,6 +17,8 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/snippets:/etc/nginx/snippets:ro
       - ./certs:/etc/nginx/certs:ro
+      # Contenido estático por vhost (p. ej. la página temporal de nexus.sig.systems).
+      - ./sites:/srv/sites:ro
       # Media de SLC (planos indoor), solo lectura. Volumen externo de SLC-SIG_platform.
       - slc_media:/app/media:ro
     networks:
