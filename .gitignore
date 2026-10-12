@@ -2,3 +2,8 @@
 edge/certs/*
 !edge/certs/.gitkeep
 dist/
+
+# Build desplegado de SIGNexus (scripts/deploy-nexus.sh); no va en git.
+edge/sites/nexus/
+edge/sites/nexus.prev/
+edge/sites/nexus.new/

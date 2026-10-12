@@ -49,3 +49,22 @@ Después, en SLC (su propio PR y ventana): `TRUST_PROXY_HEADERS=true` y añadir 
 a `CSRF_TRUSTED_ORIGINS`, para que Django reconozca las peticiones como HTTPS.
 
 Rollback: `git checkout <commit anterior> -- edge scripts && cd edge && docker compose up -d` (vuelve a HTTP en el 8091).
+
+## SIGNexus (frontend en nexus.sig.systems)
+
+Estático servido por el borde desde `edge/sites/nexus/` (fuera de git). Las URLs de backend se
+fijan al compilar (Vite):
+
+```bash
+# compilar sin Node en el host (repo SIGSystems/SIGNexus clonado en ../SIGNexus)
+docker run --rm -v "$PWD/../SIGNexus:/src:ro" -v "C:/SIG/SIGNexus/staging:/out" \
+  -e VITE_API_URL=https://nexus.sig.systems:8091/desk-api \
+  -e VITE_SIGTOOLS_API_URL=https://api.sig.systems:8091 \
+  node:24-alpine sh -c 'cp -r /src/FRONTEND /b && cd /b && npm ci && npm run build && cp -r dist/. /out/'
+scripts/deploy-nexus.sh C:/SIG/SIGNexus/staging     # publica (sin recargar nginx)
+scripts/deploy-nexus.sh --rollback                  # vuelve al build anterior
+```
+
+`nexus.sig.systems/desk-api/*` → Kong (mismo origen). El login va a `https://api.sig.systems:8091`
+(otro origen, mismo sitio): `https://nexus.sig.systems:8091` debe estar en `CORS_ALLOWED_ORIGINS` y
+`CSRF_TRUSTED_ORIGINS` de SLC. Sin build publicado, copiar `edge/sites/_placeholder/` a `edge/sites/nexus/`.
