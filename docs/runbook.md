@@ -68,3 +68,23 @@ scripts/deploy-nexus.sh --rollback                  # vuelve al build anterior
 `nexus.sig.systems/desk-api/*` → Kong (mismo origen). El login va a `https://api.sig.systems:8091`
 (otro origen, mismo sitio): `https://nexus.sig.systems:8091` debe estar en `CORS_ALLOWED_ORIGINS` y
 `CSRF_TRUSTED_ORIGINS` de SLC. Sin build publicado, copiar `edge/sites/_placeholder/` a `edge/sites/nexus/`.
+
+## Certificado: cadena con firma cruzada (obligatorio al renovar)
+
+El wildcard de GoDaddy cuelga de **GoDaddy TLS Root CA - R1**, una raíz nueva que no está en todos los
+almacenes (Mozilla/Chrome en algunos equipos; Windows sí la trae). Si el borde sirve solo hoja + intermedio,
+esos navegadores marcan "Not secure" y **bloquean las llamadas a `api.sig.systems`** (el login de SIGNexus
+falla con "Preflight request failed" sin que la petición llegue al borde).
+
+`edge/certs/sig_systems_cert.pem` debe contener, en este orden:
+1. el certificado `*.sig.systems`;
+2. `GoDaddy TLS Intermediate CA DV - R1v1`;
+3. `GoDaddy TLS Root CA - R1` **firmada por `Go Daddy Root Certificate Authority - G2`** (firma cruzada).
+
+2 y 3 vienen en el bundle público `https://certs.godaddy.com/repository/gd_bundle_dv-r1-g2.crt.pem`
+(sus dos primeros certificados; el tercero es la raíz G2, que no hace falta servir). Verificar contra el
+almacén de Mozilla antes de `make reload`:
+
+```bash
+openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt -untrusted cadena.pem hoja.pem   # → OK
+```
