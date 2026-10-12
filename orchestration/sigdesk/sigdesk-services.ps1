@@ -39,10 +39,15 @@ $ErrorActionPreference = 'Stop'
 
 # Orden de despliegue: dependencias primero (tickets llama a organization y resource).
 $Services = @(
-  @{ Key = 'organization'; Port = 18081 },
-  @{ Key = 'resource';     Port = 18082 },
-  @{ Key = 'tickets';      Port = 18080 },
-  @{ Key = 'workflow';     Port = 18083 }
+  # Required: variables sin las que el servicio no arranca (main.go de cada uno, v0.2.0).
+  # Los secretos *_SECRET exigen además >= 32 caracteres.
+  @{ Key = 'organization'; Port = 18081; Required = @('DATABASE_URL','JWT_SECRET','ORGANIZATION_INTERNAL_SECRET','SIGTOOLS_API_URL') },
+  @{ Key = 'resource';     Port = 18082; Required = @('DATABASE_URL','JWT_SECRET','RESOURCE_INTERNAL_SECRET','ORGANIZATION_INTERNAL_SECRET','ORGANIZATION_SERVICE_URL') },
+  @{ Key = 'tickets';      Port = 18080; Required = @('DATABASE_URL','JWT_SECRET','TICKETS_INTERNAL_SECRET','RESOURCE_INTERNAL_SECRET','ORGANIZATION_INTERNAL_SECRET','RESOURCE_SERVICE_URL','ORGANIZATION_SERVICE_URL','WORKFLOW_SERVICE_URL') },
+  @{ Key = 'workflow';     Port = 18083; Required = @('DATABASE_URL','JWT_SECRET','TICKETS_INTERNAL_SECRET','CHANGE_INTERNAL_SECRET','TICKETS_SERVICE_URL','CHANGE_SERVICE_URL') },
+  @{ Key = 'notification'; Port = 18084; Required = @('NOTIFICATION_DATABASE_URL','JWT_SECRET','ORGANIZATION_INTERNAL_SECRET','ORGANIZATION_SERVICE_URL') },
+  @{ Key = 'change';       Port = 18087; Required = @('CHANGE_DATABASE_URL','JWT_SECRET','CHANGE_INTERNAL_SECRET','TICKETS_INTERNAL_SECRET','RESOURCE_INTERNAL_SECRET','ORGANIZATION_INTERNAL_SECRET','TICKETS_SERVICE_URL','RESOURCE_SERVICE_URL','ORGANIZATION_SERVICE_URL','CATALOG_SERVICE_URL') },
+  @{ Key = 'problem';      Port = 18088; Required = @('PROBLEM_DATABASE_URL','JWT_SECRET','CHANGE_INTERNAL_SECRET','TICKETS_INTERNAL_SECRET','RESOURCE_INTERNAL_SECRET','ORGANIZATION_INTERNAL_SECRET','TICKETS_SERVICE_URL','RESOURCE_SERVICE_URL','ORGANIZATION_SERVICE_URL','CHANGE_SERVICE_URL','CATALOG_SERVICE_URL') }
 )
 $Prefix    = 'SIGDesk-'
 $BindHost  = '127.0.0.1'
@@ -99,15 +104,15 @@ function Test-EnvFile($s, [ref]$problems) {
   catch [UnauthorizedAccessException] { Say "  $($s.Key).env: sin permiso de lectura (corre como Administrador para validarlo)"; return $null }
   if (-not $exists) { $problems.Value += "falta $p (copia env\$($s.Key).env.example)"; return $null }
   $e = Read-EnvFile $p
-  $required = @('DATABASE_URL')
-  if ($s.Key -ne 'workflow') { $required += 'JWT_SECRET' }
-  if ($s.Key -eq 'tickets')  { $required += 'TICKETS_INTERNAL_SECRET' }
-  foreach ($k in $required) {
+  foreach ($k in $s.Required) {
     if (-not $e.Contains($k) -or [string]::IsNullOrWhiteSpace($e[$k])) { $problems.Value += "$($s.Key).env: falta $k"; continue }
     if ($e[$k] -match 'CAMBIAR|CHANGE_?ME|dev-only') { $problems.Value += "$($s.Key).env: $k sigue con el valor de ejemplo" }
   }
-  foreach ($k in 'JWT_SECRET','TICKETS_INTERNAL_SECRET') {
-    if ($e.Contains($k) -and $e[$k].Length -lt 32) { $problems.Value += "$($s.Key).env: $k < 32 caracteres (el servicio no arranca)" }
+  foreach ($k in @($e.Keys)) {
+    if ($k -like '*_SECRET' -and $e[$k].Length -lt 32) { $problems.Value += "$($s.Key).env: $k < 32 caracteres (el servicio no arranca)" }
+    # Las URLs entre servicios van a 127.0.0.1:1808x; un 808x apuntaría a otro programa del MKS
+    # (8080 = ManageEngine ServiceDesk, 8082 = Apache).
+    if ($k -like '*_SERVICE_URL' -and $e[$k] -match ':808\d\b') { $problems.Value += "$($s.Key).env: $k usa un puerto 808x; en el MKS los servicios están en 1808x" }
   }
   foreach ($k in $e.Keys) { if ($e[$k] -match '["\r\n]') { $problems.Value += "$($s.Key).env: $k contiene comillas o saltos de línea (no soportado)" } }
   foreach ($k in 'PORT','LISTEN_HOST') { if ($e.Contains($k)) { $problems.Value += "$($s.Key).env: no definas $k (lo fija este script: $BindHost`:$($s.Port))" } }
@@ -215,9 +220,8 @@ function Do-Install {
     Plan "nssm install $n  (LocalService, inicio automático retardado, reinicio al fallar, $BindHost`:$($s.Port))"
     if (-not $Apply) { continue }
     Invoke-Nssm install $n $exe | Out-Null
-    $pairs = @("PORT=$($s.Port)", "LISTEN_HOST=$BindHost") + @($e.Keys | ForEach-Object { "$_=$($e[$_])" })
     Invoke-Nssm set $n AppDirectory $CurrentDir | Out-Null
-    Invoke-Nssm set $n AppEnvironmentExtra @pairs | Out-Null
+    Set-ServiceEnv $s
     Invoke-Nssm set $n DisplayName "SIG-Desk $($s.Key)_service" | Out-Null
     Invoke-Nssm set $n Description "SIG-Desk $($s.Key)_service (detrás de Kong, solo $BindHost`:$($s.Port))" | Out-Null
     Invoke-Nssm set $n ObjectName 'NT AUTHORITY\LocalService' | Out-Null
@@ -253,13 +257,28 @@ function Do-Install {
   Say "`nInstalación $(if ($Apply) {'aplicada'} else {'simulada'}). Los servicios NO se inician solos aquí: arráncalos con 'Start-Service SIGDesk-<nombre>' cuando Postgres/Kafka/Kong estén arriba."
 }
 
-function Restore-Release($s, $relPath) {
+# Entorno del servicio = config\<svc>.env + PORT/LISTEN_HOST fijados aquí. NSSM lo guarda en
+# HKLM\...\Services\<svc>\Parameters\AppEnvironmentExtra (REG_MULTI_SZ), que se lee al arrancar.
+function EnvRegKey($s) { return "HKLM:\SYSTEM\CurrentControlSet\Services\$(SvcName $s)\Parameters" }
+function Get-ServiceEnv($s) {
+  return (Get-ItemProperty -Path (EnvRegKey $s) -Name AppEnvironmentExtra -ErrorAction SilentlyContinue).AppEnvironmentExtra
+}
+function Set-ServiceEnv($s, [string[]]$pairs) {
+  if (-not $pairs) {
+    $e = Read-EnvFile (EnvPath $s)
+    $pairs = @("PORT=$($s.Port)", "LISTEN_HOST=$BindHost") + @($e.Keys | ForEach-Object { "$_=$($e[$_])" })
+  }
+  Set-ItemProperty -Path (EnvRegKey $s) -Name AppEnvironmentExtra -Value $pairs -Type MultiString
+}
+
+function Restore-Release($s, $relPath, [string[]]$oldEnv) {
   $n = SvcName $s
   $old = Join-Path $relPath "$($s.Key)_service.exe"
   if (-not (Test-Path $old)) { return }
   Stop-Service -Name $n -ErrorAction SilentlyContinue
   (Get-Service $n).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
   Copy-Item -LiteralPath $old -Destination (ExePath $s) -Force
+  if ($oldEnv) { Set-ServiceEnv $s $oldEnv }
   Start-Service -Name $n
 }
 
@@ -267,27 +286,33 @@ function Do-Update {
   $dir = Resolve-Source
   Test-Checksums $dir
   if ($Apply) { Require-Admin }
+  # Validar la configuración de TODOS los servicios instalados antes de detener ninguno.
+  $bad = @()
+  foreach ($s in $Services) { if (Get-OwnedService (SvcName $s)) { [void](Test-EnvFile $s ([ref]$bad)) } }
+  if ($bad.Count) { Say "PROBLEMAS de configuración:"; $bad | ForEach-Object { Say "  - $_" }; throw "Update abortado antes de tocar ningún servicio." }
   $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
   $bk = Join-Path $RelDir $ts
   Plan "backup de los binarios actuales en $bk"
   if ($Apply) { New-Item -ItemType Directory -Path $bk -Force | Out-Null }
   foreach ($s in $Services) {
     $n = SvcName $s; $o = Get-OwnedService $n
-    if (-not $o) { Say "$n no está instalado: se omite."; continue }
-    Plan "$n : detener, copiar nuevo .exe, iniciar y verificar $BindHost`:$($s.Port) (si falla, restaura el anterior)"
+    if (-not $o) { Say "$n no está instalado: se omite (usa 'install')."; continue }
+    Plan "$n : detener, copiar nuevo .exe, reaplicar config\$($s.Key).env, iniciar y verificar $BindHost`:$($s.Port) (si falla, restaura binario y config)"
     if (-not $Apply) { continue }
     $wasRunning = ($o.State -eq 'Running')
+    $oldEnv = Get-ServiceEnv $s
     Copy-Item -LiteralPath (ExePath $s) -Destination $bk -Force
     Stop-Service -Name $n; (Get-Service $n).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
     Copy-Item -LiteralPath (Join-Path $dir "$($s.Key)_service.exe") -Destination (ExePath $s) -Force
+    Set-ServiceEnv $s
     if (-not $wasRunning) { Say "$n actualizado (estaba detenido; se deja detenido)."; continue }
     Start-Service -Name $n
     $ok = (Wait-Port $s.Port 45)
     if ($ok) { Start-Sleep -Seconds 8; $ok = ((Get-Service $n).Status -eq 'Running') -and (Wait-Port $s.Port 5) }
     if (-not $ok) {
-      Say "FALLÓ $n con el binario nuevo: restaurando el anterior..."
-      Restore-Release $s $bk
-      throw "Update abortado en $n (revertido). Servicios posteriores NO se tocaron. Revisa $LogDir\$($s.Key).err.log."
+      Say "FALLÓ $n con el binario nuevo: restaurando binario y configuración anteriores..."
+      Restore-Release $s $bk $oldEnv
+      throw "Update abortado en $n (revertido). Servicios posteriores NO se tocaron. Revisa $LogDir\$($s.Key).out.log."
     }
     Say "$n OK"
   }
